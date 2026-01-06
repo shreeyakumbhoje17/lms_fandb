@@ -17,7 +17,18 @@ db.sqlite3
 # macOS
 .DS_Store
 
+
+
 # Node / Frontend (if any)
 node_modules/
 dist/
+
+# Extra secret protection
+*SECRET*
+*secret*
+*KEY*
+*key*
+*.pem
+*.pfx
+*.p12
 
