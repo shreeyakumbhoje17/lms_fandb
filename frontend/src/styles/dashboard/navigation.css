@@ -1,0 +1,83 @@
+/* CATEGORY BAR */
+.ud-catbar {
+  border-top: 1px solid #f0f0f0;
+  background: #fff;
+}
+
+.ud-catbar-inner {
+  max-width: 1300px;
+  margin: 0 auto;
+  padding: 0 18px;
+  display: flex;
+  align-items: center;
+  gap: 48px;
+  justify-content: center;
+}
+
+.ud-cat-item {
+  position: relative;
+}
+
+.ud-cat {
+  display: inline-block;
+  padding: 14px 0;
+  font-weight: 400;
+  color: #1c1d1f;
+  text-decoration: none;
+  font-size: 15px;
+}
+
+/* MEGA MENU */
+.ud-megabar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 120px;
+  width: 100%;
+  background: #111318;
+  z-index: 999;
+  display: none;
+}
+
+.ud-megabar-inner {
+  max-width: 1300px;
+  margin: 0 auto;
+  padding: 18px;
+  display: flex;
+  gap: 32px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.ud-mega-link {
+  color: #fff;
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 400;
+  white-space: nowrap;
+  opacity: 0.95;
+}
+
+.ud-mega-link:hover {
+  opacity: 1;
+  text-decoration: underline;
+}
+
+/* SHOW ON HOVER */
+.ud-cat-item:hover .ud-megabar,
+.ud-cat-item:focus-within .ud-megabar {
+  display: block;
+}
+
+/* TRIANGLE POINTER */
+.ud-cat-item:hover .ud-cat::after,
+.ud-cat-item:focus-within .ud-cat::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: -12px;
+  border-left: 10px solid transparent;
+  border-right: 10px solid transparent;
+  border-bottom: 12px solid #111318;
+}

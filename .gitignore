@@ -1,0 +1,23 @@
+# Python environment
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Django specific
+db.sqlite3
+/media/
+*.log
+.env
+
+# VS Code
+.vscode/
+
+# macOS
+.DS_Store
+
+# Node / Frontend (if any)
+node_modules/
+dist/
+
