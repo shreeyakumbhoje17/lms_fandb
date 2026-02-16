@@ -2,18 +2,22 @@ import { useEffect } from "react";
 import { useMsal } from "@azure/msal-react";
 import { useNavigate } from "react-router-dom";
 
-const API_BASE = "";
+const API_BASE = ""; // keep empty for vite proxy (/api -> :8000)
 
 export default function AuthCallback() {
   const { instance } = useMsal();
   const navigate = useNavigate();
 
   useEffect(() => {
+    let cancelled = false;
+
     (async () => {
       try {
+        // 1) Process redirect (may return null on subsequent loads)
         const result = await instance.handleRedirectPromise();
         console.log("handleRedirectPromise result:", result);
 
+        // 2) Ensure active account
         if (result?.account) {
           instance.setActiveAccount(result.account);
         } else {
@@ -25,67 +29,89 @@ export default function AuthCallback() {
         console.log("active account:", account);
 
         if (!account) {
-          navigate("/login", { replace: true });
+          if (!cancelled) navigate("/login", { replace: true });
           return;
         }
 
-        let tokenResponse;
-        try {
-          tokenResponse = await instance.acquireTokenSilent({
-            account,
-            scopes: ["openid", "profile", "email"],
-          });
-        } catch {
-          navigate("/dashboard", { replace: true });
-          return;
-        }
+        // 3) Get an ID token for backend exchange
+        // - Prefer redirect result idToken (only available right after redirect)
+        // - Otherwise silently acquire (MSAL cache) to get idToken reliably
+        let idToken = result?.idToken || null;
 
-        const idToken = tokenResponse?.idToken;
         if (!idToken) {
-          navigate("/dashboard", { replace: true });
+          try {
+            const silent = await instance.acquireTokenSilent({
+              account,
+              // These scopes are enough to get a valid id_token for the signed-in user.
+              // (We are NOT using the accessToken here.)
+              scopes: ["openid", "profile", "email"],
+            });
+            idToken = silent?.idToken || null;
+          } catch (e) {
+            console.warn("acquireTokenSilent (idToken) failed:", e);
+            if (!cancelled) navigate("/login", { replace: true });
+            return;
+          }
+        }
+
+        if (!idToken) {
+          console.warn("No idToken available for backend exchange.");
+          if (!cancelled) navigate("/login", { replace: true });
           return;
         }
 
-        try {
-          const res = await fetch(`${API_BASE}/api/auth/microsoft/`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ id_token: idToken }),
-          });
+        // 4) Exchange Entra id_token for Django SimpleJWT
+        const loginRes = await fetch(`${API_BASE}/api/auth/microsoft/`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id_token: idToken }),
+        });
 
-          if (res.ok) {
-            const data = await res.json();
+        const loginData = await loginRes.json().catch(() => ({}));
 
-            // ✅ Save tokens
-            localStorage.setItem("access", data.access);
-            localStorage.setItem("refresh", data.refresh);
-
-            // ✅ Normalize role for frontend UI logic
-            const role = data.user.role === "office" ? "office" : "field";
-
-            // ✅ Save normalized user object
-            localStorage.setItem("user", JSON.stringify({
-              email: data.user.email,
-              first_name: data.user.first_name,
-              last_name: data.user.last_name,
-              role, // now matches UI config
-            }));
-
-            console.log("Stored ACCESS token ✔", localStorage.getItem("access")?.slice(0,20));
-            console.log("Stored REFRESH token ✔", localStorage.getItem("refresh")?.slice(0,20));
-            console.log("Stored ROLE ✔", role);
-          }
-        } catch (e) {
-          console.error("Backend fetch failed:", e);
+        if (!loginRes.ok) {
+          console.error("Backend /api/auth/microsoft/ failed:", loginRes.status, loginData);
+          if (!cancelled) navigate("/login", { replace: true });
+          return;
         }
 
-        navigate("/dashboard", { replace: true });
-      } catch {
-        navigate("/login", { replace: true });
+        const backendAccess = loginData?.access || "";
+        const backendRefresh = loginData?.refresh || "";
+
+        if (!backendAccess) {
+          console.error("Backend login succeeded but access token missing:", loginData);
+          if (!cancelled) navigate("/login", { replace: true });
+          return;
+        }
+
+        // 5) Store backend tokens (SimpleJWT)
+        try {
+          localStorage.setItem("access", backendAccess);
+          if (backendRefresh) localStorage.setItem("refresh", backendRefresh);
+          else localStorage.removeItem("refresh");
+        } catch (e) {
+          console.warn("localStorage unavailable:", e);
+        }
+
+        // Optional: store backend user payload
+        if (loginData?.user) {
+          try {
+            localStorage.setItem("user", JSON.stringify(loginData.user));
+          } catch {}
+        }
+
+        // 6) Done
+        if (!cancelled) navigate("/dashboard", { replace: true });
+      } catch (e) {
+        console.error("Auth callback failed:", e);
+        if (!cancelled) navigate("/login", { replace: true });
       }
     })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [instance, navigate]);
 
   return <div>Signing you in...</div>;
 }
-

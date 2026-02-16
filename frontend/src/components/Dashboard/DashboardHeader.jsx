@@ -1,28 +1,72 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 import { useMsal, useIsAuthenticated } from "@azure/msal-react";
 import { useNavigate, Link } from "react-router-dom";
 
 import MyLearningPop from "./MyLearningPop";
-import WishlistPop from "./WishlistPop";
 import { apiFetch } from "../../api";
 
-function getInitials(user) {
-  const f = (user?.first_name || "").trim();
-  const l = (user?.last_name || "").trim();
+function pickNameParts(user) {
+  const first = (user?.first_name || "").trim();
+  const last = (user?.last_name || "").trim();
 
-  if (f || l) {
-    return `${f.slice(0, 1) || ""}${l.slice(0, 1) || ""}`.toUpperCase() || "US";
+  if (first || last) return { first, last };
+
+  const display = (user?.display_name || user?.displayName || user?.name || "").trim();
+  if (display) {
+    const parts = display.split(/\s+/).filter(Boolean);
+    return {
+      first: parts[0] || "",
+      last: parts.length > 1 ? parts[parts.length - 1] : "",
+    };
   }
 
-  // fallback: from email
   const email = (user?.email || "").trim();
-  if (email) return email.slice(0, 2).toUpperCase();
+  if (email) {
+    const local = email.split("@")[0] || "";
+    const chunks = local.split(/[._-]+/).filter(Boolean);
+    return {
+      first: chunks[0] || "",
+      last: chunks.length > 1 ? chunks[chunks.length - 1] : "",
+    };
+  }
 
+  return { first: "", last: "" };
+}
+
+function getInitials(user) {
+  const { first, last } = pickNameParts(user);
+
+  const f = (first || "").trim();
+  const l = (last || "").trim();
+
+  const email = (user?.email || "").trim();
+  let inferredLast = "";
+  if (email) {
+    const local = (email.split("@")[0] || "").trim();
+    const chunks = local.split(/[._-]+/).filter(Boolean);
+    inferredLast = chunks.length > 1 ? chunks[chunks.length - 1] : "";
+  }
+
+  const finalLast = l.length <= 1 && inferredLast ? inferredLast : l;
+
+  if (f || finalLast) {
+    const a = (f.slice(0, 1) || "").toUpperCase();
+    const b = (finalLast.slice(0, 1) || "").toUpperCase();
+    return (a + b) || "US";
+  }
+
+  if (email) return email.slice(0, 2).toUpperCase();
   return "US";
 }
 
-export default function DashboardHeader({ user, pendingMode = false, onBlockedAction }) {
-  const initials = getInitials(user);
+export default function DashboardHeader({
+  user,
+  pendingMode = false,
+  onBlockedAction,
+  searchQuery = "",
+  onSearchChange,
+}) {
+  const initials = useMemo(() => getInitials(user), [user]);
 
   const { instance } = useMsal();
   const isAuthenticated = useIsAuthenticated();
@@ -32,9 +76,12 @@ export default function DashboardHeader({ user, pendingMode = false, onBlockedAc
   const [navItems, setNavItems] = useState([]);
   const [navError, setNavError] = useState("");
 
-  // dropdown control for category strip
   const [openCat, setOpenCat] = useState(null);
   const closeTimer = useRef(null);
+
+  // ✅ Trainer gate (now sourced from /api/me/ via user.can_upload)
+  const [canUpload, setCanUpload] = useState(false);
+  const [trainerStatusLoaded, setTrainerStatusLoaded] = useState(false);
 
   useEffect(() => {
     async function loadNav() {
@@ -47,7 +94,7 @@ export default function DashboardHeader({ user, pendingMode = false, onBlockedAc
           return;
         }
         const data = await res.json();
-        setNavItems(Array.isArray(data.items) ? data.items : []);
+        setNavItems(Array.isArray(data.categories) ? data.categories : []);
         setNavError("");
       } catch (e) {
         setNavError(String(e));
@@ -56,6 +103,12 @@ export default function DashboardHeader({ user, pendingMode = false, onBlockedAc
     }
     loadNav();
   }, []);
+
+  // ✅ PERMANENT: use backend /api/me/ as single source of truth
+  useEffect(() => {
+    setCanUpload(!!user?.can_upload);
+    setTrainerStatusLoaded(true);
+  }, [user?.can_upload]);
 
   function openDropdown(label) {
     if (closeTimer.current) window.clearTimeout(closeTimer.current);
@@ -79,20 +132,105 @@ export default function DashboardHeader({ user, pendingMode = false, onBlockedAc
     }
   }
 
+  function handleUploadClick() {
+    // Pending mode blocks everyone
+    if (pendingMode) {
+      onBlockedAction?.();
+      return;
+    }
+
+    // Trainers-only gate
+    if (!canUpload) {
+      // if status hasn't loaded yet, still show blocked toast
+      onBlockedAction?.();
+      return;
+    }
+
+    navigate("/upload");
+  }
+
   if (!isAuthenticated) return null;
+
+  const uploadDisabled = pendingMode || !canUpload;
 
   return (
     <header className="ud-header">
       <div className="ud-header-inner">
         <div className="ud-left">
-          <img src="/logo.png" alt="Aspect University Logo" className="ud-logo-img" />
-          {/* ✅ Explore removed */}
+          <img src="/logo.png" alt="Aspect" className="ud-logo-img" />
         </div>
 
         <div className="ud-search" role="search">
-          <span className="ud-search-icon" aria-hidden="true">🔎</span>
-          <input type="text" placeholder="Search for anything" aria-label="Search for anything" />
+          <span className="ud-search-icon" aria-hidden="true">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+              <path
+                d="M10.5 18.5a8 8 0 1 1 0-16 8 8 0 0 1 0 16Z"
+                stroke="currentColor"
+                strokeWidth="2"
+              />
+              <path
+                d="M16.5 16.5 21 21"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+              />
+            </svg>
+          </span>
+          <input
+            type="text"
+            placeholder="Search guides, procedures, issues…"
+            aria-label="Search guides, procedures, issues"
+            value={searchQuery}
+            onChange={(e) => onSearchChange?.(e.target.value)}
+          />
         </div>
+
+        {/* ✅ UPLOAD button (trainers only) */}
+        <button
+          type="button"
+          onClick={handleUploadClick}
+          title={
+            pendingMode
+              ? "Waiting for Admin Access.."
+              : !trainerStatusLoaded
+              ? "Checking permissions..."
+              : !canUpload
+              ? "Trainers only"
+              : "Upload / Create content"
+          }
+          style={{
+            marginLeft: 12,
+            marginRight: 12,
+            height: 38,
+            padding: "0 14px",
+            borderRadius: 10,
+            border: "1px solid rgba(255,255,255,0.18)",
+            background: "#285193", 
+            color: "#F1FF28", 
+            fontWeight: 900,
+            letterSpacing: 0.6,
+            cursor: uploadDisabled ? "not-allowed" : "pointer",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 8,
+            userSelect: "none",
+            whiteSpace: "nowrap",
+            opacity: uploadDisabled ? 0.45 : 1,
+          }}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M12 16V4" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" />
+            <path
+              d="M7 9l5-5 5 5"
+              stroke="currentColor"
+              strokeWidth="2.4"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+            <path d="M4 20h16" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" />
+          </svg>
+          UPLOAD
+        </button>
 
         <nav className="ud-nav" aria-label="Primary">
           <a
@@ -104,60 +242,25 @@ export default function DashboardHeader({ user, pendingMode = false, onBlockedAc
             Aspect Business
           </a>
 
-          {/* ✅ My learning back */}
           <MyLearningPop pendingMode={pendingMode} onBlockedAction={onBlockedAction} />
         </nav>
 
         <div className="ud-actions">
-          {/* ✅ Heart dropdown (same style behavior as MyLearningPop) */}
-          <WishlistPop pendingMode={pendingMode} onBlockedAction={onBlockedAction} />
-
-          {/* PROFILE DROPDOWN */}
           <div
-            style={{ position: "relative" }}
+            className="ud-profile-wrap"
             onMouseEnter={() => setMenuOpen(true)}
             onMouseLeave={() => setMenuOpen(false)}
           >
-            <div className="ud-profile-bubble" title={user.email ?? "Profile"} style={{ cursor: "pointer" }}>
+            <div className="ud-profile-bubble" title={user?.email ?? "Profile"} style={{ cursor: "pointer" }}>
               {initials}
             </div>
 
             {menuOpen && (
-              <div
-                style={{
-                  position: "absolute",
-                  right: 0,
-                  top: "110%",
-                  width: 300,
-                  background: "#fff",
-                  border: "1px solid rgba(0,0,0,0.12)",
-                  borderRadius: 12,
-                  boxShadow: "0 16px 40px rgba(0,0,0,0.12)",
-                  padding: 12,
-                  zIndex: 9999,
-                }}
-              >
-                <div style={{ padding: "6px 8px", fontSize: 13, color: "#6a6f73" }}>
-                  {user.email ?? "Signed in"}
-                </div>
+              <div className="ud-profile-menu">
+                <div className="ud-profile-email">{user?.email ?? "Signed in"}</div>
 
-                <button
-                  type="button"
-                  onClick={handleLogout}
-                  style={{
-                    width: "90%",
-                    height: 44,
-                    borderRadius: 10,
-                    border: "none",
-                    background: "#244a9b",
-                    color: "#e6ff2a",
-                    fontWeight: 900,
-                    cursor: "pointer",
-                    marginTop: 10,
-                    textShadow: "0 0 8px rgba(230,255,42,0.7)",
-                  }}
-                >
-                  Log Out
+                <button type="button" onClick={handleLogout} className="ud-logout-btn">
+                  Log out
                 </button>
               </div>
             )}
@@ -180,7 +283,7 @@ export default function DashboardHeader({ user, pendingMode = false, onBlockedAc
             return (
               <div
                 className="ud-cat-item"
-                key={cat.label}
+                key={cat.key || cat.label}
                 onMouseEnter={() => openDropdown(cat.label)}
                 onMouseLeave={scheduleClose}
                 style={{ position: "relative" }}
@@ -204,10 +307,10 @@ export default function DashboardHeader({ user, pendingMode = false, onBlockedAc
                     onMouseLeave={scheduleClose}
                   >
                     <div className="ud-megabar-inner">
-                      {cat.sub.map((item) =>
+                      {(cat.subcategories || []).map((sub) =>
                         pendingMode ? (
                           <button
-                            key={item.label}
+                            key={sub.key || sub.label}
                             type="button"
                             className="ud-mega-link"
                             onClick={onBlockedAction}
@@ -219,16 +322,18 @@ export default function DashboardHeader({ user, pendingMode = false, onBlockedAc
                               cursor: "pointer",
                             }}
                           >
-                            {item.label}
+                            {sub.label}
                           </button>
                         ) : (
                           <Link
                             className="ud-mega-link"
-                            key={item.label}
-                            to={item.to}
+                            key={sub.key || sub.label}
+                            to={`/dashboard?category=${encodeURIComponent(cat.key)}&subcategory=${encodeURIComponent(
+                              sub.key
+                            )}`}
                             onClick={() => setOpenCat(null)}
                           >
-                            {item.label}
+                            {sub.label}
                           </Link>
                         )
                       )}

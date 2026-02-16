@@ -42,6 +42,7 @@ body {
   z-index: 50;
   background: #fff;
   border-bottom: 1px solid #e6e6e6;
+  
 }
 
 .ud-header-inner {
@@ -108,6 +109,7 @@ body {
 }
 
 .ud-actions {
+  margin-left: auto;
   display: flex;
   align-items: center;
   gap: 10px;

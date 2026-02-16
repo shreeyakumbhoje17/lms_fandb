@@ -1,9 +1,6 @@
 @media (max-width: 980px) {
-  .promo { height: 280px; }
-  .promo-card { left: 18px; top: 18px; width: min(520px, calc(100% - 36px)); }
+  .promo-slim { height: 150px; }
   .learning-row { grid-template-columns: 1fr; }
-  .learning-next { display: none; }
-  .learn-card { grid-template-columns: 120px 1fr; }
   .ud-megabar { display: none !important; }
 }
 

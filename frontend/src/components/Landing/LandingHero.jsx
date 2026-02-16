@@ -3,7 +3,20 @@ import { Link } from "react-router-dom";
 export default function Hero() {
   return (
     <section className="ud-hero">
-      <div className="ud-hero-inner">
+      {/* Promo image acts as the section container */}
+      <div
+        className="ud-hero-inner"
+        style={{
+          backgroundImage: "url(/promo.jpg)",
+          backgroundSize: "cover",
+          backgroundPosition: "center",
+          backgroundRepeat: "no-repeat",
+          borderRadius: 18,
+          padding: 20,
+          position: "relative",
+        }}
+      >
+        {/* Keep the card exactly where it was */}
         <div className="ud-hero-card">
           <h1 className="ud-hero-title">Welcome to Aspect University</h1>
           <p className="ud-hero-subtitle">
@@ -14,10 +27,6 @@ export default function Hero() {
               Log in to start
             </button>
           </Link>
-        </div>
-
-        <div className="ud-hero-visual" aria-hidden="true">
-          <img src="/peoplerb.png" alt="" className="ud-hero-img" />
         </div>
       </div>
     </section>

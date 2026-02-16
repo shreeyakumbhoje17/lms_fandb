@@ -32,3 +32,6 @@ dist/
 *.pfx
 *.p12
 
+.env
+
+*.sqlite3

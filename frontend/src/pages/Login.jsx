@@ -1,14 +1,14 @@
 import "../styles/login.css";
 import { useMsal } from "@azure/msal-react";
+import { loginRequest } from "../auth/msalConfig"; // ✅ use your backend API scope
 
 export default function Login() {
   const { instance } = useMsal();
 
-  // ✅ Only ONE function, defined BEFORE return
   async function handleMicrosoftLogin() {
     try {
       await instance.loginRedirect({
-        scopes: ["openid", "profile", "email"],
+        ...loginRequest, // ✅ scopes: api://.../access_as_user
         prompt: "select_account",
       });
     } catch (e) {
